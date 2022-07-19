@@ -1,7 +1,10 @@
 import itertools
+import random
 from typing import Dict, List, Tuple, Set
-from ProgressManager.RunTable.Models.RunProgress import RunProgress
+
 from ConfigValidator.Config.Models.FactorModel import FactorModel
+from ProgressManager.RunTable.Models.RunProgress import RunProgress
+
 
 class RunTableModel:
     __factors:       List[FactorModel] = None
@@ -59,4 +62,13 @@ class RunTableModel:
                     row_list.append(" ")
 
             experiment_run_table.append(dict(zip(column_names, row_list)))
-        return experiment_run_table
+
+        randomized_table = []
+
+        groups = itertools.groupby(experiment_run_table, lambda row: row['trial_number'])
+        for group in groups:
+            tests_for_run = [run for run in group[1]]
+            random.shuffle(tests_for_run)
+            randomized_table.extend(tests_for_run)
+
+        return randomized_table
