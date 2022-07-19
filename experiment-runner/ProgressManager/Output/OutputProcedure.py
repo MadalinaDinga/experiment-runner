@@ -1,4 +1,4 @@
-import time
+from datetime import datetime
 from tabulate import tabulate
 from ExperimentOrchestrator.Misc.DictConversion import class_to_dict
 from ExperimentOrchestrator.Misc.BashHeaders import BashHeaders
@@ -21,7 +21,7 @@ class OutputProcedure:
         if empty_line:
             print(" " * 100)
 
-        print(f"{OutputProcedure.runner} {txt}")
+        print(f"{datetime.today().strftime('%Y-%m-%d %H:%M:%S')} {OutputProcedure.runner} {txt}")
 
     @staticmethod
     def console_log_OK(txt: str, empty_line=False):
