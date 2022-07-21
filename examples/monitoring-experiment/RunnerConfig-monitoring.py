@@ -13,15 +13,19 @@ from os.path import dirname, realpath
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+MAX_TEST_DURATION_SECOND = 1500
+
 
 class Workload(enum.Enum):
     W_LOW = 25
     W_MEDIUM = 50
     W_HIGH = 100
 
+
 def extract_level(level):
     # We remove the prefix and make it lowecase F_LOW -> low
     return level.lower()[2:]
+
 
 def get_credentials(host_name):
     # declare credentials
@@ -35,25 +39,45 @@ def get_credentials(host_name):
     return host, username, password
 
 
+def get_paramiko_connection(connection_name):
+    host, username, password = get_credentials(connection_name)
+    # connect to server
+    con = paramiko.SSHClient()
+    con.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    con.connect(host, username=username, password=password)
+    output.console_log(f"Connection successful to {connection_name}")
+
+    return con
+
+
+def remote_command(connection_name, command, measurement_name):
+    con = get_paramiko_connection(connection_name)
+
+    output.console_log(f'Starting {measurement_name} meter')
+    stdin, stdout, stderr = con.exec_command(command)
+    err = stderr.read()
+    if err != b'':
+        output.console_log(err)
+    output.console_log(f'{measurement_name} successfully executed')
+
 class RunnerConfig:
     ROOT_DIR = Path(dirname(realpath(__file__)))
 
     # ================================ USER SPECIFIC CONFIG ================================
     """The name of the experiment."""
-    name:                       str             = "new_runner_experiment"
+    name: str = "new_runner_experiment"
 
     """The path in which Experiment Runner will create a folder with the name `self.name`, in order to store the
     results from this experiment. (Path does not need to exist - it will be created if necessary.)
     Output path defaults to the config file's path, inside the folder 'experiments'"""
-    results_output_path:        Path             = ROOT_DIR / 'experiments'
+    results_output_path: Path = ROOT_DIR / 'experiments'
 
     """Experiment operation type. Unless you manually want to initiate each run, use `OperationType.AUTO`."""
-    operation_type:             OperationType   = OperationType.AUTO
+    operation_type: OperationType = OperationType.AUTO
 
     """The time Experiment Runner will wait after a run completes.
     This can be essential to accommodate for cooldown periods on some systems."""
-    time_between_runs_in_ms:    int             = 3*60*1000
-
+    time_between_runs_in_ms: int = 3 * 60 * 1000
 
     # Dynamic configurations can be one-time satisfied here before the program takes the config as-is
     # e.g. Setting some variable based on some criteria
@@ -75,7 +99,6 @@ class RunnerConfig:
 
         output.console_log("Custom config loaded")
 
-
     def create_run_table(self) -> List[Dict]:
         """Create and return the run_table here. A run_table is a List (rows) of tuples (columns), 
         representing each run performed"""
@@ -96,20 +119,17 @@ class RunnerConfig:
         )
         return self.run_table.generate_experiment_run_table()
 
-
     def before_experiment(self) -> None:
         """Perform any activity required before starting the experiment here
         Invoked only once during the lifetime of the program."""
 
         output.console_log("Config.before_experiment() called!")
 
-
     def before_run(self) -> None:
         """Perform any activity required before starting a run.
         No context is available here as the run is not yet active (BEFORE RUN)"""
 
         output.console_log("Config.before_run() called!")
-
 
     def start_run(self, context: RunnerContext) -> None:
         """Perform any activity required for starting the run here.
@@ -144,11 +164,19 @@ class RunnerConfig:
 
         # wait for system to start up
         if (context.run_variation['tool'] == 'elastic'):
-            output.console_log("Sleep 10 minutes...")
-            time.sleep(10*60)
+            output.console_log("Sleep 8 minutes...")
+            time.sleep(8 * 60)
         else:
             output.console_log("Sleep 5 minutes...")
-            time.sleep(5*60)
+            time.sleep(5 * 60)
+
+        _, number_of_containers_buf, _ = con.exec_command("docker ps | wc -l")
+        number_of_containers = int(number_of_containers_buf.read().strip())
+        output.console_log(f"Found {number_of_containers} running after sleeping")
+
+        if number_of_containers < 68:
+            output.console_log("Sleep for 3 more minutes...")
+            time.sleep(3 * 60)
 
         _, number_of_containers_buf, _ = con.exec_command("docker ps | wc -l")
         number_of_containers = int(number_of_containers_buf.read().strip())
@@ -170,28 +198,26 @@ class RunnerConfig:
     def start_measurement(self, context: RunnerContext) -> None:
         """Perform any activity required for starting measurements."""
         output.console_log("Config.start_measurement() called!")
+        file_name = context.run_variation['trial_number'] + "-" + context.run_variation['tool'] + "-" + \
+                    context.run_variation['frequency'] + "-" + context.run_variation['workload']
 
-        host, username, password = get_credentials('GL3')
+        # start Wattsup profiler on GL3
+        _, _, passwordGL3 = get_credentials("GL3")
+        watssup_command = f"echo {passwordGL3} | sudo -S ~/wattsup/start_wattsup_new.sh {file_name} {context.run_variation['trial_number']} train-ticket"
+        remote_command("GL3", watssup_command, "Wattsup meter start")
 
-        # connect to server
-        con = paramiko.SSHClient()
-        con.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        con.connect(host, username=username, password=password)
+        # start sar CPU
+        sar_cpu_command = f"mkdir -p /home/madalina/sar/{context.run_variation['trial_number']}; " \
+                          f"sar -u 1 {MAX_TEST_DURATION_SECOND} -o /home/madalina/sar/{context.run_variation['trial_number']}/cpu-{file_name} > /dev/null 2>&1"
+        remote_command("GL2", sar_cpu_command, "SAR CPU start")
 
-        output.console_log("Connection successful")
-        output.console_log('Start Wattsup meter')
+        # start sar Memory
+        sar_memory_command = f"sar -r 1 {MAX_TEST_DURATION_SECOND} -o /home/madalina/sar/{context.run_variation['trial_number']}/memory-{file_name} > /dev/null 2>&1"
+        remote_command("GL2", sar_memory_command, "SAR Memory start")
 
-        file_name_suffix = context.run_variation['trial_number'] + "-" + context.run_variation['tool'] + "-" + context.run_variation['frequency'] + "-" + context.run_variation['workload']
-
-        # start profiler (on GL3)
-        stdin, stdout, stderr = con.exec_command(f"echo {password} | sudo -S ~/wattsup/start_wattsup_new.sh {file_name_suffix} {context.run_variation['trial_number']} train-ticket")
-
-        err = stderr.read()
-        if err != b'':
-            output.console_log(err)
-
-        output.console_log('Wattsup successfully started')
-
+        # start sar Network
+        sar_network_command = f"sar -n TCP 1 {MAX_TEST_DURATION_SECOND} -o /home/madalina/sar/{context.run_variation['trial_number']}/network-{file_name} > /dev/null 2>&1"
+        remote_command("GL2", sar_network_command, "SAR Network start")
 
     def interact(self, context: RunnerContext) -> None:
         """Perform any interaction with the running target system here, or block here until the target finishes."""
@@ -205,32 +231,20 @@ class RunnerConfig:
 
         output.console_log('Finished load testing')
 
-
     def stop_measurement(self, context: RunnerContext) -> None:
         """Perform any activity here required for stopping measurements."""
 
         output.console_log("Config.stop_measurement called!")
 
-        host, username, password = get_credentials('GL3')
+        _, _, passwordGL3 = get_credentials("GL3")
 
-        # connect to server
-        con = paramiko.SSHClient()
-        con.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        con.connect(host, username=username, password=password)
+        stop_wattsup_command = f"echo {passwordGL3} | sudo -S ~/wattsup/stop_wattsup.sh"
+        remote_command("GL3", stop_wattsup_command, "Wattsup meter stop")
 
-        output.console_log("Connection successful")
+        _, _, passwordGL2 = get_credentials("GL2")
 
-        output.console_log('Stopping Wattsup meter')
-
-        # stop profiler (on GL3)
-        stdin, stdout, stderr = con.exec_command(f"echo {password} | sudo -S ~/wattsup/stop_wattsup.sh")
-
-        err = stderr.read()
-        if err != b'':
-            output.console_log(err)
-
-        output.console_log('Stopped Wattsup meter')
-
+        stop_sar_command = f"echo {passwordGL2} | sudo killall sar"
+        remote_command("GL2", stop_sar_command, "SAR All Stop")
 
     def stop_run(self, context: RunnerContext) -> None:
         """Perform any activity here required for stopping the run.
@@ -280,6 +294,13 @@ class RunnerConfig:
         if err != b'':
             output.console_log(err)
 
+        output.console_log('Kill netdata if needed')
+
+        stdin, stdout, stderr = con.exec_command(f"echo {password} | sudo -S killall netdata")
+
+        err = stderr.read()
+        if err != b'':
+            output.console_log(err)
 
     def populate_run_data(self, context: RunnerContext) -> Optional[Dict[str, Any]]:
         """Parse and process any measurement data here.
@@ -289,13 +310,11 @@ class RunnerConfig:
         output.console_log("Config.populate_run_data() called!")
         return None
 
-
     def after_experiment(self) -> None:
         """Perform any activity required after stopping the experiment here
         Invoked only once during the lifetime of the program."""
 
         output.console_log("Config.after_experiment() called!")
 
-
     # ================================ DO NOT ALTER BELOW THIS LINE ================================
-    experiment_path:            Path             = None
+    experiment_path: Path = None
