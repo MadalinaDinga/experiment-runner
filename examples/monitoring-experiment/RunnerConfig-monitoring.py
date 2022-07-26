@@ -13,8 +13,6 @@ from os.path import dirname, realpath
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-MAX_TEST_DURATION_SECOND = 1500
-
 
 class Workload(enum.Enum):
     W_LOW = 25
@@ -149,7 +147,8 @@ class RunnerConfig:
 
         tool = context.run_variation['tool']
         frequency = extract_level(context.run_variation['frequency'])
-        output.console_log(f"Running {tool} with {frequency}")
+        workload = extract_level(context.run_variation['workload'])
+        output.console_log(f"Running {tool} with {frequency} frequency and {workload} workload")
         # run as sudo, since elastic requires it
         stdin, stdout, stderr = con.exec_command(f"tmux new -s train -d 'cd ~/train-ticket-fork/train-ticket; echo {password} | sudo -S python cli.py run-stack -t {tool} -f {frequency}'")
 
@@ -206,18 +205,8 @@ class RunnerConfig:
         watssup_command = f"echo {passwordGL3} | sudo -S ~/wattsup/start_wattsup_new.sh {file_name} {context.run_variation['trial_number']} train-ticket"
         remote_command("GL3", watssup_command, "Wattsup meter start")
 
-        # start sar CPU
-        sar_cpu_command = f"mkdir -p /home/madalina/sar/{context.run_variation['trial_number']}; " \
-                          f"sar -u 1 {MAX_TEST_DURATION_SECOND} -o /home/madalina/sar/{context.run_variation['trial_number']}/cpu-{file_name} > /dev/null 2>&1"
-        remote_command("GL2", sar_cpu_command, "SAR CPU start")
-
-        # start sar Memory
-        sar_memory_command = f"sar -r 1 {MAX_TEST_DURATION_SECOND} -o /home/madalina/sar/{context.run_variation['trial_number']}/memory-{file_name} > /dev/null 2>&1"
-        remote_command("GL2", sar_memory_command, "SAR Memory start")
-
-        # start sar Network
-        sar_network_command = f"sar -n TCP 1 {MAX_TEST_DURATION_SECOND} -o /home/madalina/sar/{context.run_variation['trial_number']}/network-{file_name} > /dev/null 2>&1"
-        remote_command("GL2", sar_network_command, "SAR Network start")
+        sar_command = f"~/sar/start_sar.sh {file_name} {context.run_variation['trial_number']}"
+        remote_command("GL2", sar_command, "SAR start")
 
     def interact(self, context: RunnerContext) -> None:
         """Perform any interaction with the running target system here, or block here until the target finishes."""
@@ -237,14 +226,13 @@ class RunnerConfig:
         output.console_log("Config.stop_measurement called!")
 
         _, _, passwordGL3 = get_credentials("GL3")
-
         stop_wattsup_command = f"echo {passwordGL3} | sudo -S ~/wattsup/stop_wattsup.sh"
         remote_command("GL3", stop_wattsup_command, "Wattsup meter stop")
 
-        _, _, passwordGL2 = get_credentials("GL2")
-
-        stop_sar_command = f"echo {passwordGL2} | sudo killall sar"
-        remote_command("GL2", stop_sar_command, "SAR All Stop")
+        file_name = context.run_variation['trial_number'] + "-" + context.run_variation['tool'] + "-" + \
+                    context.run_variation['frequency'] + "-" + context.run_variation['workload']
+        stop_sar_command = f"~/sar/stop_sar.sh {file_name} {context.run_variation['trial_number']}"
+        remote_command("GL2", stop_sar_command, "SAR stop")
 
     def stop_run(self, context: RunnerContext) -> None:
         """Perform any activity here required for stopping the run.
