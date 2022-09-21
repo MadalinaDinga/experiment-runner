@@ -102,17 +102,17 @@ class RunnerConfig:
         representing each run performed"""
         self.run_table = RunTableModel(
             factors=[
-                FactorModel("trial_number", ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 't10']),
+                FactorModel("run_number", ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10']),
                 FactorModel("tool", ['baseline', 'netdata', 'zipkin', 'prometheus', 'elastic', 'jaeger']),
                 FactorModel("frequency", ['F_HIGH', 'F_MEDIUM', 'F_LOW']),
                 FactorModel("workload", ['W_HIGH', 'W_MEDIUM', 'W_LOW']),
             ],
-            exclude_variations=[{"baseline", "F_HIGH", "W_HIGH"},
-                                {"baseline", "F_HIGH", "W_MEDIUM"},
-                                {"baseline", "F_HIGH", "W_LOW"},
-                                {"baseline", "F_MEDIUM", "W_HIGH"},
-                                {"baseline", "F_MEDIUM", "W_MEDIUM"},
-                                {"baseline", "F_MEDIUM", "W_LOW"}],
+            # exclude_variations=[{"baseline", "F_HIGH", "W_HIGH"},
+            #                     {"baseline", "F_HIGH", "W_MEDIUM"},
+            #                     {"baseline", "F_HIGH", "W_LOW"},
+            #                     {"baseline", "F_MEDIUM", "W_HIGH"},
+            #                     {"baseline", "F_MEDIUM", "W_MEDIUM"},
+            #                     {"baseline", "F_MEDIUM", "W_LOW"}],
             data_columns=[]
         )
         return self.run_table.generate_experiment_run_table()
@@ -162,12 +162,8 @@ class RunnerConfig:
         output.console_log("Waiting for benchmark system to start up")
 
         # wait for system to start up
-        if (context.run_variation['tool'] == 'elastic'):
-            output.console_log("Sleep 8 minutes...")
-            time.sleep(8 * 60)
-        else:
-            output.console_log("Sleep 5 minutes...")
-            time.sleep(5 * 60)
+        output.console_log("Sleep 10 minutes...")
+        time.sleep(10 * 60)
 
         _, number_of_containers_buf, _ = con.exec_command("docker ps | wc -l")
         number_of_containers = int(number_of_containers_buf.read().strip())
@@ -197,15 +193,15 @@ class RunnerConfig:
     def start_measurement(self, context: RunnerContext) -> None:
         """Perform any activity required for starting measurements."""
         output.console_log("Config.start_measurement() called!")
-        file_name = context.run_variation['trial_number'] + "-" + context.run_variation['tool'] + "-" + \
+        file_name = context.run_variation['run_number'] + "-" + context.run_variation['tool'] + "-" + \
                     context.run_variation['frequency'] + "-" + context.run_variation['workload']
 
         # start Wattsup profiler on GL3
         _, _, passwordGL3 = get_credentials("GL3")
-        watssup_command = f"echo {passwordGL3} | sudo -S ~/wattsup/start_wattsup_new.sh {file_name} {context.run_variation['trial_number']} train-ticket"
+        watssup_command = f"echo {passwordGL3} | sudo -S ~/wattsup/start_wattsup_new.sh {file_name} {context.run_variation['run_number']} train-ticket"
         remote_command("GL3", watssup_command, "Wattsup meter start")
 
-        sar_command = f"~/sar/start_sar.sh {file_name} {context.run_variation['trial_number']}"
+        sar_command = f"~/sar/start_sar.sh {file_name} {context.run_variation['run_number']}"
         remote_command("GL2", sar_command, "SAR start")
 
     def interact(self, context: RunnerContext) -> None:
@@ -229,9 +225,9 @@ class RunnerConfig:
         stop_wattsup_command = f"echo {passwordGL3} | sudo -S ~/wattsup/stop_wattsup.sh"
         remote_command("GL3", stop_wattsup_command, "Wattsup meter stop")
 
-        file_name = context.run_variation['trial_number'] + "-" + context.run_variation['tool'] + "-" + \
+        file_name = context.run_variation['run_number'] + "-" + context.run_variation['tool'] + "-" + \
                     context.run_variation['frequency'] + "-" + context.run_variation['workload']
-        stop_sar_command = f"~/sar/stop_sar.sh {file_name} {context.run_variation['trial_number']}"
+        stop_sar_command = f"~/sar/stop_sar.sh {file_name} {context.run_variation['run_number']}"
         remote_command("GL2", stop_sar_command, "SAR stop")
 
     def stop_run(self, context: RunnerContext) -> None:
