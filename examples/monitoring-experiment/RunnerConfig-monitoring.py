@@ -217,7 +217,7 @@ class RunnerConfig:
 
         os.system(f"k6 run - <~/train-ticket/k6-test/script-all.js "
                   f"--summary-export=/home/madalina/train-ticket/k6-test/reports/{file_name}.json "
-                  f"--vus {workload_value} --iterations {iterations}")
+                  f"--vus {workload_value} --iterations {iterations} --duration 60m")
 
         output.console_log('Finished load testing')
 
