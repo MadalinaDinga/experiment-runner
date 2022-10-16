@@ -15,9 +15,9 @@ from typing import Dict, List, Any, Optional
 
 
 class Workload(enum.Enum):
-    W_LOW = 25
-    W_MEDIUM = 50
-    W_HIGH = 100
+    W_LOW = 10
+    W_MEDIUM = 15
+    W_HIGH = 30
 
 
 def extract_level(level):
@@ -211,8 +211,13 @@ class RunnerConfig:
         workload_value = Workload[context.run_variation['workload']].value
         output.console_log(f"Load testing with K6 - {context.run_variation['workload']} workload: {workload_value}")
 
-        os.system(f"for i in $(ls ~/train-ticket/k6-test); "
-                  f"do k6 run - <~/train-ticket/k6-test/$i/script.js --vus {workload_value} --duration 20s ; done")
+        file_name = context.run_variation['run_number'] + "-" + context.run_variation['tool'] + "-" + \
+                    context.run_variation['frequency'] + "-" + context.run_variation['workload']
+        iterations = 1000
+
+        os.system(f"k6 run - <~/train-ticket/k6-test/script-all.js "
+                  f"--summary-export=/home/madalina/train-ticket/k6-test/reports/{file_name}.json "
+                  f"--vus {workload_value} --iterations {iterations}")
 
         output.console_log('Finished load testing')
 
