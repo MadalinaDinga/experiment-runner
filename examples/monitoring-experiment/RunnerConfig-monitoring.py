@@ -15,9 +15,14 @@ from typing import Dict, List, Any, Optional
 
 
 class Workload(enum.Enum):
-    W_LOW = 10
-    W_MEDIUM = 15
-    W_HIGH = 30
+    """
+    Workload = the number of vus
+    value 1 - the number of virtual users (vus)
+    value 2 - the number of iterations shared among all vus
+    """
+    W_LOW = (10, 345)
+    W_MEDIUM = (20, 690)
+    W_HIGH = (40, 1380)
 
 
 def extract_level(level):
@@ -208,16 +213,17 @@ class RunnerConfig:
         """Perform any interaction with the running target system here, or block here until the target finishes."""
 
         output.console_log("Config.interact() called!")
-        workload_value = Workload[context.run_variation['workload']].value
-        output.console_log(f"Load testing with K6 - {context.run_variation['workload']} workload: {workload_value}")
+        workload_level = context.run_variation['workload']
+        workload_vus = Workload[workload_level].value[0]
+        workload_iterations = Workload[workload_level].value[1]
+        output.console_log(f"Load testing with K6 - {workload_level} workload: {workload_vus} vus, {workload_iterations} iterations")
 
         file_name = context.run_variation['run_number'] + "-" + context.run_variation['tool'] + "-" + \
-                    context.run_variation['frequency'] + "-" + context.run_variation['workload']
-        iterations = 1000
+                    context.run_variation['frequency'] + "-" + workload_level
 
         os.system(f"k6 run - <~/train-ticket/k6-test/script-all.js "
                   f"--summary-export=/home/madalina/train-ticket/k6-test/reports/{file_name}.json "
-                  f"--vus {workload_value} --iterations {iterations} --duration 60m")
+                  f"--vus {workload_vus} --iterations {workload_iterations} --duration 60m")
 
         output.console_log('Finished load testing')
 
